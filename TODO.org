@@ -1,0 +1,1816 @@
+Haphazard TODO list of things that needs attention:
+
+* DONE Warn if we get old ACKs, there seem to be no control of this.
+   We better have a check for this, otherwise we can simply add a
+   large number of dumb errors to the code base later on.
+* DONE We don't update the advertized window at all.
+   We should begin planning how to handle the advertised window. We
+   are currently killing the receiver because we are sending too fast
+   and he has begun dropping packets.
+
+   To make the window going:
+   DONE ; Whenever we send out a packet, calculate the current window and
+     stamp it into the packet
+   DONE ; Figure out how to set the advertised window on outgoing packets.
+   DONE ; Set window on outgoing advertised packets.
+
+   DONE ; Figure out how to do this.
+     It requires us to make a calculation based on the advertised
+     window from the other end. When this is properly updated, we must
+     calculate how many packets there are currently fitting into the
+     window, and only send this amount to the other end.
+
+   DONE ; When the connection is establishes, we will get an advertized
+     window from the other end which we must obey. We don't currently.
+   DONE ; When we receive a packet, be sure to make the correct window
+     updates
+   DONE ; When the packet fill code runs, we are currently shoving empty
+     packets into the stream. This ought to be fixed - quickly.
+
+   DONE ; Check that the window gets advertised correctly towards the other
+     end.
+   DONE ; Only send packets up to the window size.
+  
+   DONE ; Handle the special case of a zero packet window. It is a quite
+     important special-case because you should only open up the window
+     again, if a full packet can be injected in-flight. Otherwise, you
+     must let the other end keep processing stuff.
+
+   DONE ; Should ST_STATE packets bump the seq_no?
+
+* DONE Figure out why our test fails
+  The 2nd of our tests fail for some reason, but we need to know why
+  exactly.
+
+  Out test fails due to retransmissions it seems. We can thus try to
+  implement retransmissions and see if this solves the problem!
+* DONE Retransmissions
+  How should we handle retransmission of missing packets? This is
+  needed before we can go to a check over the internet.
+** DONE Propagate information if the ACK is moving ahead!
+** DONE Set up a retransmission timer with a fairly large window of 3 seconds.
+*** DONE Detect the need for retransmissions
+    What are exactly the need for retransmissions?
+
+    You should detect the case where there are no more bytes in-flight
+    to send out. In that case, you should mark a message down with
+    this information.
+*** DONE Mark in the ACK-code when the in-flight buffer is empty
+*** DONE Set up a retransmission timer and build a correct cancellation of it as well
+*** DONE Handle the all_acked case in the retransmission timer as well.
+    We are currently not handling this case correctly and we should.
+** DONE Install the retransmissions code.
+   Increase the timeout by two every time the retransmission timer ticks.
+** DONE Write code for retransmitting the oldest frame
+   With this, we gamble we only lost a single frame in the stream,
+   though this is probably not going to be true in the general case
+* DONE There is a bug when creating multiple connections, fix
+  The second created connection seem to stall, and I wonder why. This
+  should be investigated as the fix is needed to make the code work
+  anyway!
+
+  This error is interesting:
+
+  ** exception error: no match of right hand side value 
+                    {error,{already_started,<0.60.0>}}
+     in function  gen_utp:connect/3
+     in call from utp:test_connector_1/0
+* DONE The ACK in the connectee@ is seen as old, investigate
+  There is something along the lines of the numbering that doesn't
+  work here. It ought to be fixed. But we place it down here to
+  concentrate on other stuff first.
+
+  The problem is that we find an ACK and that ACK is older than what
+  we expect it to be. This is wrong, and we should fix it. We should
+  get an ACK which is equivalent to the last acked packet. I.e., it
+  should be equivalent to a window probe request. It is off-by-one and
+  sometimes it is off by two (??).
+* DONE ZeroWindow Timeouts
+** DONE Move the Zerowindow check out of handle-packet. It has no place in there
+** DONE Install and remove the zerowindow timeout
+   When the window closes to 0, we should start the zerowindow
+   timer. If nothing has happened for some time, we will then send out
+   a window probe to coax the other end into sending back an ACK with
+   an updated window.
+*** DONE Installation
+   When the window closes to 0, we should install the timer.
+*** DONE UnInstallation
+   If there is already a timer installed, remove it when the window
+   opens above 0.
+** DONE Figure out the exact construction of the window probe packet
+   We don't know exactly what the probe packet looks like. We better
+   read the source code of libutp to see what it looks like.
+
+   There is no window probe packet. One simply bumps the window size
+   >.< ... that is a majorly bad idea, but what the protocol does.
+*** DONE Timer triggering
+   If this timer triggers, it means we should send forth a
+   window-probe packet. This is a packet which will trigger an ACK the
+   other way.
+
+   No, it means: Increase the window by one and then try to fill up
+   the buffer if possible again!
+* DONE SYN Timeouts should just be part of retransmit timeouts?
+  Yep, they should.
+** DONE Read the libutp source and figure out the normal retransmit time for SYNs
+   The normal retransmit time is two tries: one at 3 secs, one at 6
+   secs and then at 12, we give up. OK. That should be easy to implement.
+** DONE Set up the retransmit timer in uTP to match this.
+** DONE Keep trying and fail if it takes too long upon timer triggers.
+** DONE Ignore the special cases a bit for now.
+* DONE Socket Close
+  How to implement socket closedown?
+
+  Basic socket closedown is done. We have pushed the problem to other
+  states now!
+** DONE Make a plan and understand what is going on!
+   It is based on the idea of FIN packets. Does it allow half-open
+   connections?
+
+   The plan is to figure out some general things, and then attack each
+   possible state transition one by one. It begs some general
+   questions, which we can probably answer by digging into the code.
+** DONE Does uTP allow for half-open connections?
+   Investigate the source code of libutp to figure this out!
+
+   No! uTP has no concept of half-open connections!
+** DONE How is the two-army problem handled?
+   By timeouts, we know that.
+** DONE Individual states:
+   A transition happens on a given state with a given input.
+
+   For each of these state transitions, understand specifically what
+   happens in the transition and make a plan for it.
+
+   Handle them by implementing what we think is the bare minimum and
+   then build on from there!
+** DONE 1: CONNECTED + close()
+*** DONE Check the source of libutp
+*** DONE We should send off a st_fin packet
+*** DONE The st_fin packet should be entered in the retransmission buffer!
+*** DONE We should transition to fin_sent in state.
+** DONE 2: CONNECTED + pkt(st_fin)
+    Mark where the end of the stream is
+**** DONE What does libutp do?
+     What happens when the incoming packet is of type st_fin?
+
+     What happens to all who are awaiting transfer of data when the
+     buffer closes.
+**** DONE When the buffer closes, we should stop satisfying data to the upper layer
+     According to spec, this is what should happen. So if we close the
+     line in the send direction, we are also closing the line in the
+     receive direction. In other words, we don't use the concept of
+     half-open connections.
+**** DONE When receiving a FIN packet, install a knowledge of this in the pkt_buffer
+     We should record that we got a fin packet, and what seq_no is
+     stamped with the fin.
+**** DONE Set a Message which says we got the fin packet.
+**** DONE Make sure we don't send data to the upper layer when a fin has been sent!
+**** DONE Should the ST_FIN packet go to the retransmit buffer?
+     Yes, make it so!
+
+     It is written like any other packet, eventually of size 0 but is
+     present in the reorder buffer so it will be transmitted safely
+     eventually. It is not simply an ACK for state updates.
+** DONE Implement the FIN_SENT state properly
+*** DONE Refactor out pkt receives from the other end from connected
+    We need this code present in the fin_sent state as well, so factor
+    it out such that we can use it here as well.
+*** DONE Implement the altered state on how to handle the next state in this.
+** DONE How do we leave FIN_SENT?
+     We leave FIN_SENT as soon as we either timeout, or if we get acks
+     back up to the FIN_PACKET. In this case, we move to the DESTROY
+     state.
+*** DONE Detect that the ST_FIN packet was acked by the last ACK
+** DONE Figure out exactly what happens when an ST_FIN packet is received
+     There are two points in time. When we get the packet in, and when
+     we ACK it because we reach it in the reorder buffer. Which should
+     force the state change to the GOT_FIN state? Look in the libutp
+     code.
+
+     When we *CONFIRM* the eof_pkt by ACK'ing in our end, we move the
+     the GOT_FIN state.
+
+     When we *SEE* the packet, we track that we have seen a finalizer
+     packet, but we don't do any state updates and stay in the
+     CONNECTED state in this case.
+** DONE When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
+     The reason we should post this to the worker process is such that
+     it can alter the state to a new one. Otherwise we will entangle
+     different parts to each other.
+** DONE When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
+     This is because in the FIN_SENT state we are just about to close
+     down anyway, so there is no reason to move to GOT_FIN.
+** DONE If we are in FIN_SENT and we *Confirm* an ACK, move to FIN_SENT
+   Done. This is automatically fixed in our code since the path is
+   split correctly. We don't need to handle this case at all!
+** DONE In States which are not CONNECTED, nor FIN_SENT we can't accept new data.
+*** DONE If we know the eof_pkt and receive packets past it, throw them out!
+     We can simply enter them in the reorder buffer and soundly ignore them.
+*** DONE 3: SYN_SENT + close()
+    Set timeout to the minimum of 60 and the conn rto * 2
+*** DONE 4: GOT_FIN + close()
+    Move to DESTROY_DELAY
+*** DONE 5: ALL_OTHER_STATES + close()
+    Move to DESTROY!
+*** TODO DESTROY
+    Destroy should clean up stuff. What stuff should it clean up, and
+    how?
+
+    We should report back to clients waiting on the socket for data
+    that this won't happen.
+* DONE FIN_SENT and timeout
+** DONE What should be done here?
+   I am pretty sure we should be moving to another state, but I am not
+   which state we should move to. Investigate the libutp C++ code.
+
+   Easy: Increase RTO. If new RTO is above threshold (30 secs) then
+   move to DESTROY as a state.
+* DONE GOT_FIN and timeout
+** DONE What should be done here?
+   This is yet another of those questions we want to answer. How do we
+   get *away* from the GOT_FIN state?
+
+   We should move to the state CS_RESET
+* DONE DESTROY_DELAY and timeout()
+  Move to CS_DESTROY!
+* DONE FIN_SENT and send()
+* DONE FIN_SENT and recv()
+* DONE 3: GOT_FIN how do we react on a GOT_FIN?
+*** DONE GOT_FIN || DESTROY_DELAY + timeout() ?
+     The rule here is that we should go to DESTROY (for DESTROY_DELAY)
+     And we should go to RESET (for GOT_FIN).
+     We must tell callers that we have an ECONNRESET as well.
+*** DONE GOT_FIN + recv() --> error, can't*
+    ECONNRESET?
+*** DONE GOT_FIN + send() --> error, can't
+* DONE CS_RESET state
+  This is another question-mark. What should we do in the CS_RESET
+  state? We Better read the source of libutp.
+
+  Hmm, there is nothing to do in this state. Essentially, we should
+  just move to the DESTROY state right away. It is rather odd that
+  this state exists. It may have been an old fluke from the early days
+  of the protocol. I am willing to just destroy the line instead.
+** DONE Use the RESET state to confirm a close.
+   In this state, we just deny everyone everything until we get a
+   close() on the socket at which point we move to the DESTROY state.
+* DONE DESTROY how do we react on a DESTROY?
+    Set a timeout
+    When the timeout trigger, we remove everything on this socket by
+    closing down. We do however tell back to parents waiting that the
+    socket is going to be destroyed.
+
+    That is essentially all!
+** DONE Write code which can walk through the senders and receivers and send them messages
+   This means we can send out messages to all clients who are waiting
+   on us to do something. We can call this either from the DESTROY
+   state as a safeguard, or we can call it earlier if some states
+   requires us to exit out earlier with other kinds of information. It
+   also allows us to handle the ETIMEDOUT error correctly, I guess.
+* DONE RESET packets
+  We currently have no handling of RESET packets at all. It ought to
+  be pretty simple though and can be added easily I think.
+** DONE ST_RESET Packet in the receive direction
+   We receive an ST_RESET packet for a connection. This means we
+   should stop processing and die. The rule is that in a FIN_SENT
+   state we should move to DESTROY. In other states we should move to
+   RESET. The error message to return up is based on whether or not we
+   are in SYN_SENT. In SYN_SENT, it is ECONNREFUSED. Otherwise it is
+   ECONNRESET!
+*** DONE Add the ability to handle a reset() call for a given socket.
+    In this state, we should carry out the things we have written down
+    above.
+** DONE ST_RESET Packet in the send direction
+   This happens on a failed lookup. There is no such socket present,
+   so when we try to look up the socket, we fail. This means we send
+   off an RST packet, but store a "Do not send off another RST Packet
+   for this unless a grace time has happened" entry in the lookup
+   table.
+*** DONE Write code for the transmission of a RESET packet
+*** DONE Install on a failed lookup
+* DONE Assert all messaging goes through OK
+  This is really a bit hacky, but I'd rather assert that all the UDP
+  packets are released correctly to the underlying operating system
+  for now. If not, we ought to handle it explicitly anyway.
+
+* DONE Fix the "ACK-is-old" bug.
+  When we get in packets, the ACK is classified as an old ACK. This is
+  an error somewhere in the code and should be fixed.
+
+  The ACK is old because we send back an ACK which is too low in value
+  compared to what the receiver expects.
+
+  1: Is the receiver the connector or the connected?
+     * It is the connectee, so the connector is the one sending old
+       acks, or the connectee has the wrong ACK number.
+  2: What code is the code that sends off the ACK?
+     * The ACK sent is OK. It just ACKs for the last acked packet.
+  3: Where does the ACK stem from? From the initial connect setup
+     code?
+     * Fixed
+  4: Why is it off-by-two or off-by-one?
+     * The initialization was wrong and than was a count of 1
+  5: Is this an error w.r.t. that the ACK is the next expected ACK
+     * Doesn't look like it
+  6: I think the culprit is the code that updates the send buffer. It
+     calculates the window incorrectly and thus it fails.
+
+
+  The problem is actually quite simple. The ACK was determined as old
+  because the sequence number is the next expected sequence number
+  there is. We use a number one too high. This is the second
+  off-by-one bug, so we are now down to 0 off-by-x bugs in the code.
+* DONE Store a triple, {ConnID, Address, Port}, for a connection.
+  This is far more robust in the long run as we can then reuse
+  connection IDs for other {Addr, Port} pairs.
+
+* DONE Backwards data test
+  Open a connection and move data "backwards"
+* DONE Full-duplex test
+  Test data transfer in full duplex over the line
+* DONE Test close() of sockets
+  Test that a socket can be closed down again. Currently the code is
+  there but it has no coverage.
+** DONE Test close() for the connector
+** DONE Test close() for the connectee
+** DONE Test close() after data has moved over the line
+** DONE Test close() after data has moved in full-duplex manner
+* DONE Robustness falters under heavy packet loss.
+  When the packet loss is very heavy, the robustness of the system is
+  worse than it normally is. We ought to investigate why this is the
+  case and fix it.
+
+  My guess is we lost a packet we can't afford to loose at the moment. To
+  fix this, we must know where the "I-give-up" occurs so we can
+  attempt to diagnose what packet created the problem and fix it.
+
+** DONE Some of these bugs are due to ENOBUFS being sent by the kernel
+   This can be fixed by actually handling it correctly in the layers
+   of the worker process. We better look into fixing it.
+* DONE Try the NetEm stuff in Linux as well. It may behave differently compared to FreeBSD
+  NetEM is far more general in what it can do to a line, but I'll keep
+  both around for completeness.
+
+* DONE Handle ENOBUFS
+  The best way to handle is either to just drop the packet in
+  question, or wait a little bit of time and then try to resend. In
+  any case, we can assume the packet is lost in a first try.
+* DONE Try the code on FreeBSD as well
+* DONE Read through the SYN/ACK phase of the libutp source
+  We need to understand what the rules are here, before we can
+  implement it correctly.
+
+* DONE Re-read the uTP BEP 29 spec again
+
+* DONE Fix the early got fin problem
+  Ok, if packets get reordered and we get a FIN packet, then the
+  problem is our FIN packet is somehow forcing us to move to a GOT_FIN
+  state too quick. Hence, when the real packet comes in later, the
+  state is wrong and we throw away the packet we are missing due to
+  being in the GOT_FIN state. This is a problem that creates a large
+  number of small problems.
+
+  The fix is to investigate why we are tracking the got_fin too early
+  in this case. For some reason it matches the next expected packet
+  and then we have the problem where the real packet we are waiting
+  for comes at a later point in time.
+
+  ; One bug was found and fixed. If the fin packet was empty, we did
+    not check that it was the expected packet right away. Hence when
+    the st_fin tagged packet arrived, we simply moved to the got_fin
+    state much too early.
+
+  Another problem is that we may get the packet moving us from the
+  syn_sent state into connected out of order. In other words, we begin
+  seeing data packets before we see the progressing packet. This is
+  rather fun and not really cool. How to fix?
+
+  ; We don't need to fix this right away. The retransmit code will
+    ensure we eventually get the data again even if it fails early
+    on. As such, this is an optimization of the system.
+
+  A Third problem is that the ACK packet signifying the opening of the
+  connection may be lost. What should we do in that case?
+
+  ; Nothing! Then the connection will time out and be
+    gone. Unfortunate, but what must be done in a two-way handshake.
+
+  Fourth problem: Retransmits! When going to the fin_sent state, we
+  must still be able to carry out retransmissions as normal. Otherwise
+  the retransmit timer will never be set on the connection and thus
+  our code will fail to retransmit and hence fail to actually work.
+
+  ; I have installed a retransmit handler when we close the session
+    from the connected state. This should ensure that retransmits
+    happen according to the plan and eliminate some bugs pertaining to
+    this problem.
+* DONE Why do we get "got_fin" very early on and then sit with that for a looong time?
+  This looks like something that is currently wrong, but we survive in
+  some way or the other. We ought to investigate that case!
+
+  This was fixed. There was a bug where we got a fin packet in but
+  forgot to check if it matched the next expected sequence
+  number. Hence a fin packet would always complete and never enter the
+  reorder buffer. This of course means errors all over the place.
+* DONE closer_3 can timetrap_timeout
+  45.000s	FAILED	{timetrap_timeout,{utp_SUITE,closer,72}}
+  why can it timetrap_timeout? Does this have anything to do with the
+  packet state as well?
+
+  This was due to the got_fin bug: Entering it too early when we got a
+  st_fin packet.
+* DONE Fix this bug no_data_wrong_pkt_state:
+=== location {utp_SUITE,connect_n_send_big,146}
+=== reason = no match of right hand side value 
+                 {badrpc,
+                     {'EXIT',
+                         {{error,no_data_wrong_pkt_state,
+                              [{ty,st_data},
+                               {conn_id,29189},
+                               {win_sz,8192},
+                               {seq_no,101},
+                               {ack_no,825},
+                               {extension,[]},
+                               {payload,192}]},
+                          {gen_fsm,sync_send_event,
+                              [<12912.79.0>,{recv,112928},infinity]}}}}
+
+  Actually, it is us who have been too protective. It is ok. What
+  happens is we get a duplicate packet in and then it triggers this
+  when the sequence number is placed right on top of the other, or is
+  a duplicate packet.
+* DONE Use the Linux NetEM packet mangler to test the system
+  This is fairly important. It found some problems in the code base
+  and we better have a look at what it is it found.
+* DONE Add support for repeating the test cases
+  A successful test requires more than a single run. To capture
+  eventual nasty bugs, we better rerun tests a lot.
+* DONE There is a bug where we have timeouts
+  The gen_fsm times out when we try to connect and hence we get
+  timetrap timeouts. The fix is to make the timeout occur much rarer
+  and increase it by an insane amount, possibly infinity.
+
+  Turns out there was a @todo in the code... :P
+* DONE Keep trying to reconnect in the tests
+  The default timeout is only 6 seconds and I deliberately run with
+  extremely large buffers to mess up the system. Keep trying to
+  reconnect until the timetrap hits.
+* DONE Write code for a sanity checker
+  When we have completed a connection, the gen_server which is the
+  main entry point must be in a sane state:
+
+  ; There should be no entries in the registry table
+  ; All processes should have been closed down correctly
+* DONE Fix the race around [{got_fin, true}, ...]
+  There is a race in the code around the "got fin"
+  state. Specifically, the system disallows a close of that socket
+  correctly in a case we have and thus the system enters an infinite
+  ACK-loop state in which we can't do anything. This ought to be
+  fixed.
+
+  The race was present in the fin_sent state upon a cross-close of the
+  line.
+* DONE What should we do when we are in fin_sent and get in an st_fin packet?
+  We need to get this packet in, as we can be in need of ACK'ing it
+  up. Right now throw them away, but that is probably a bad idea to
+  do.
+
+  The fix here is to handle the packet as we normally do with packets,
+  so we may move from fin_sent, get a FIN packet and then move
+  straight to the state of DESTROY if the ST_FIN packet can complete
+  the connection.
+
+  This is now handled. It is not the question of the incoming packet,
+  which simply sets the fact that we have an st_fin packet in the
+  reorder buffer. It is the {got_fin} message that afterwards comes
+  which has to be handled. We do that now.
+* DONE Fix the problem of sockets closing down
+  When we close down a connection, we must remove it upon a close()
+  call and not afterwards. Otherwise, we can't rely on the order in
+  which things happens. The rule is that after a close(), the socket
+  should not be available and packets should not be forwarded to it.
+
+  Or we should rethink the design and the rules for when you get
+  removed from the ETS/Monitor lists. Really, it hinges on the fact of
+  what happens as soon as you get a close() and what operations there
+  should be done.
+
+  This requires some deep thinking. Otherwise we may actually do the
+  wrong thing here.
+
+  This is really not a problem, I realized.
+* DONE The syn_queue can grow full
+  There is a bug in the acceptor code so we end up with the wrong
+  session being accepted by the syn queue. Hence this connection is
+  never established and so we get a skew:
+
+  A wants to SYN
+    to            B
+  ---- B fails ----
+  A wants to SYN
+     goes to q on B
+  A wants to SYN
+     goes to q on B
+  ...
+  --- New test ----
+  A wants to SYN
+                  B picks up old SYN in q
+  A wants to SYN
+  --- Nothing happens ---
+
+  The problem is that I think we are tracking the registry entries
+  incorrectly. What ensures that we get a duplicate syn packet to an already
+  created connection? Is it the conn_id_recv or conn_id_send we
+  register in the registry and what is the right thing to push in
+  there?
+
+  Fixed. Duplicate SYN packets must be forwarded correctly and they
+  are now.
+* DONE Dialyzer fixes:
+==> utp (dialyze)
+gen_utp_worker.erl:593: Function satisfy_buffer/4 will never be called
+gen_utp_worker.erl:610: The pattern {'ok', {'receiver', From, Length, Res}, N_Processes} can never match the type 'empty'
+gen_utp_worker.erl:723: The pattern {'rb_drained', PR1, PB1} can never match the type {'ok',utp_process:t(),'undefined' | {'pkt_buf',queue(),[any()],[any()],integer(),char(),char(),'none' | {_,_},integer(),integer(),integer()}}
+utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | queue(),sender_q::{maybe_improper_list(),_}} violates the declared type of field sender_q::'undefined' | queue()
+* DONE TEST RUNS
+     1. OK 7/0
+     2. FAIL 6/1
+     3. FAIL 2/5
+     4. OK
+     5. OK o.O
+     6. FAIL 6/1
+* DONE Why don't we return {ok, Sock} | {error, Reason} on connect?
+  This seem to overlook something important on our end.
+* DONE close_2 2-way handshake "bug" in the test case
+  Ok, there is a funny bug with the two way handshake:
+
+  First, we send off a SYN
+
+  A > SYN > B
+
+  Then, B immediately closes the connection.
+
+  A < ACK < B
+  A < FIN < B
+
+  Reordering now happens, so
+
+  A < FIN -- thrown out because we are in the syn_sent state.
+  A < ACK -- OK, WE HAVE A CONNECTION!!!!
+
+  A > DATA > B -- Succeeds!, we have a connection!
+  A < FIN -- *NOW* we get the FIN! so we begin closing down the line
+
+  The bug is in the test, not in the code! The fix is to make the test
+  code robust for this happening.
+
+* DONE Test the retransmission code
+** DONE Make DUMMYNET work on FreeBSD
+** DONE Test the code on FreeBSD again!
+** DONE Create a script with a low-level error rate.
+** DONE TEST with a low-level error rate.
+** DONE Create a script with a medium level error rate.
+** DONE Create a script that totally fucks up the connection ordering.
+** DONE Create a script which does everything in a nasty way.
+** DONE Create a script which is close to realistic.
+* DONE Fix the "fin_sent" gets SYN packet bug
+  This bug is new due to us fixing another bug. It is pretty easy,
+  just throw it away.
+* DONE Make the test spec specific to uTP
+  Currently, I override the etorrent_test spec, but we ought to run a
+  separate test for etorrent.
+* DONE Find and remove dialyzer missing types
+  The dialyzer reports some missing types. Fix this.
+* DONE Retransmission of the syn packet seems to fail for some reason.
+  Investigate why this is the case and fix it.
+
+  We detect we should retransmit the SYN packet. Do we actually
+  retransmit the packet proper? Yes we do!
+
+  Is the problem in the receiving end then? Perhaps! We may be in a
+  state where we have sent the SYN packet, and the first ACK-packet is
+  not transferred back. It should be retransmitted and the system
+  should detect this is the case! But I am fairly sure there is no
+  code in place which ensures this is the case.
+
+  This has been solved. The problem is that a SYN evades the registry
+  by having another ConnID number in it. So the SYN packets that got
+  resent was not sent to the right process and he then never does
+  anything with them. If the ACK packet is lost then, we get another
+  SYN which will force another ACK that will set up the
+  connection. But this didn't work initially.
+* DONE If we already have a connection worker, forward new SYN packets to it
+  This way, the worker process is responsible for doing the right
+  thing in the case a duplicate SYN comes in, and handle it
+  accordingly. I think this is a better design choice than the one we
+  have now.
+* DONE Code refactoring: Error logging should be tunable
+  Make it such that error logging is a tunable and not an always on
+  thing as now.
+* DONE TEST CASE: Piggyback test
+* DONE TEST CASE: Receive window test
+  In this test, we must wait until we actually fetch data to test what
+  happens when the receive window is full in one end. We basically
+  wait 5-10 seconds before we begin the receive. And we only receive a
+  bit at a time to be even more nasty.
+* DONE Move tests to utp_test
+* DONE Move the window-specific code to its own module.
+  The window-code will grow rather big so refactor it to its own
+  module
+* DONE Capture logs with our own tracing layer
+  Build a tracing layer into the uTP stack. It will come in handy for
+  a lot of things over the coming days.
+* DONE Stop stray async_messages on packet types we know how to handle
+  There are some async messages that comes out of the system. We know
+  how they should be handled, so we can handle them in the code and
+  ignore them.
+* DONE Remove the SYN-duplicate bug
+  When entering SYNs in the accept queue, check there isn't already
+  one from the same connection there
+* DONE Make the registry atomic upon incoming SYNs
+  gen_utp is the guy that should register atomically before handling
+  the next packet. Otherwise we hit some rather peculiar bugs upon
+  races.
+* DONE Test the buffer draining code
+  Fixed a bug around {error, eof} when closing down.
+* DONE Backwards communication has some bug
+  The problem is that one path, the OUT_PATH_TRACE gets {error,
+  econnreset}. We must investigate why this is the case and fix it.
+
+  It probably has to do with the done order receives are happening in
+  here.
+
+  One problem is we get to push DATA, DATA, FIN *before* the Out end
+  even has a chance to call recv(Sock, 10). In that case it will get
+  an error because there are no data on socket anymore.
+
+  Yes, this is the problem we are seeing. Relief because that is
+  probably an easy fix.
+
+20:35:06 <+jlouis> Omg, they have never seen this design problem due to the way 
+                   they handle the code
+20:37:17 < MononcQc> jlouis, what
+20:37:47 <+jlouis> MononcQc: they have a callback function which gets called 
+                   whenever there are data to deliver. So they always have a 
+                   receiver
+20:37:52 < MononcQc> you mean the buffer can be closed and lost
+20:37:58 <+jlouis> yeah
+20:38:03 < MononcQc> that's pretty bad
+20:38:11 < MononcQc> so you can probably write your first RFC now
+20:38:53 <+jlouis> A: connects. B: Accepts. A: Sends Data. A: Closes. B: gets 
+                   all data and acknowledges the close. B: receives. Receive 
+                   fail since the socket is closed
+20:39:07 < MononcQc> lol
+20:39:15 < MononcQc> concurrency is hard
+20:39:25 <+jlouis> the 'get-all-data-and-acknowledge' part is where they 
+                   callback a function so they know there is something to 
+                   deliver
+20:39:55 < MononcQc> the idea is that the buffer should stay alive even if the 
+                     socket is not or something
+20:40:01 <+jlouis> so they never see they are not like the BSD socket interface 
+                   here
+20:40:20 <+jlouis> I think you should allow processes to drain the buffer
+20:40:37 <+jlouis> I can do that
+20:40:54 <+jlouis> TCP doesn't have the problem since the connection can be 
+                   half-open
+20:41:04 <+jlouis> so the receiving end has to close
+20:41:16 <+jlouis> and if it receives first, it will get its data
+20:42:22 <+jlouis> But the BEP29 describing uTP says: "This document assumes 
+                   some knowledge of how TCP and window based congestion 
+                   control works."
+20:42:30 <+jlouis> yet, they don't do what TCP does here, quite funneh
+20:42:50 < MononcQc> The author assumes he knows TCP
+20:43:05 <+jlouis> MononcQc: the cool thing though is I had never found it 
+                   without ct
+20:43:09 <+jlouis> and stress tests
+
+    The easy fix is to allow receivers to drain the buffer in the
+    got_fin state, up until the timeout. But it is a quite funny
+    bug :P
+
+* DONE Stress test the rwin_test for the receive window
+  This test is specifically made such that it messes with the receive
+  window and will hit the zerowin timer quite a lot. It emulates a
+  slow receiver vs. a fast sender.
+
+  It fails. It fails due to the same problem as the backwards
+  communication test sometimes do. The solution is to allow buffer
+  drains in the got_fin state and such.
+** DONE Implement buffer drains in the got_fin state and so on.
+** DONE There is a bug where a number is negative due to the rwin code
+* DONE How should st_state packets in the got_fin state be handled
+  Either we should process them or throw them away. I am not sure what
+  is the right thing to do, actually.
+* DONE Investigate the piggyback test problem
+  The receive does not complete in one direction for some odd
+  reason. We better investigate why it suddenly hangs and wont
+  complete. It must be due to reordering as the thing works nicely if
+  we don't install the netem messer.
+
+  We should investigate this case deeply since it is quite important
+  to get right before we attack the later problems.
+** DONE Reenable the test case!
+   Interestingly, there is no real bugs due to this anymore I have
+   seen, so we assume there is no problem for now until we find some
+   more specific test case with an error in it.
+* DONE TEST CASE: Test the wrap-around
+  The 16bit wrap-around counter has to be tested somehow.
+  One way is to do a backwards test. We send about 100 packets, so we
+  have a 65536/100 = 665.35 to one chance of hitting it. That is, we
+  will hit it in one out of 3 test runs, approximately...
+
+** DONE Add support for options on sockets
+** DONE Add an option what can cheat and force a sequence number
+   in the connectee direction.
+* DONE We sometimes hit {error, enobufs}
+  On the FreeBSD machine. Investigate and handle this kind of error
+  message.
+
+  We can only handle this while on the FreeBSD machine and when we
+  know where it occurs. We should probably regard such a packet as
+  lost rather than try again later on. It only happens when we have
+  enabled active queue management of some kind, notably RED or a
+  DUMMYNET pipe.
+
+  We assume the fix is to regard the packet as lost forever.
+
+* DONE False Start: When in syn_sent and getting packets out of order, reorder them!
+  This is a problem we can ignore in principle until we have other
+  parts of the system up and running. Retransmission will ensure we
+  eventually get them in.
+** TODO Read libutp source code on out-of-order packets in syn_sent
+  It is not obvious what to do:
+
+  There are so many loose holes in this so we better fix them. How do
+  we want to handle initial ACK's and stuff?
+
+  The best thing is to read through the code of libutp and figure out
+  what they have decided to do.
+
+  Essentially, this is the question that says: Should we allow for
+  false starts or shouldn't we allow for false starts? Is libutp
+  accepting false starts? We could just buffer up incoming packets
+  temporarily and then feed them to ourselves when we go to the
+  connected state.
+
+* DONE ACK piggybacking
+  ACK piggybacking is the concept where we under a send check if we
+  sent a packet. If this is the case, we effectively have a piggy-back
+  and can drop sending out a separate ACK. It is easily detected in
+  the code base and then handled explicitly.
+
+  ; Detect if we transmitted a packet on the socket
+  ; If we did *not*, leave a message.
+  ; Check this message before sending the st_state based ack!
+
+  Piggybacking has been implemented. If there are any errors due to
+  this, it is errors due to other parts of the code being wrong and
+  probably not due to this.
+* DONE Force an st_state packet through when the window *reopens*
+  If we have a window that is down to 0, and we then suddenly get a
+  receiver on the socket reading data out of it such that we detect
+  the window open up again, we should always send a window update
+  packet in this case.
+
+  It will make the other end trip the zerowin-timer rarely and I don't
+  like the way the zero win timer is resolved.
+
+  Also, it will make the rwin test go through faster. In fact, the
+  rwin test has been made to make this possible.
+
+  Ok, what is the condition for the window to reopen. The condition is
+  that before, the size of the receive buffer was full, i.e., the
+  window was 0. And now, since we have had a receiver doing something,
+  the window is not empty anymore. I.e., the window has reopened.
+
+  What is the condition? The condition is that we have advertised a
+  window of 0 lately. And now, we would not advertise a window
+  of 0. This should force out a st_state packet.
+
+  What event can open the window?
+
+  1: A receiver comes by and wants data. And we satisfy the guy by the
+     buffer. The window before is 0 and the window after is not!
+* DONE Consider what to do about the rb_drained return.
+  Does it require any special handling?
+
+  What does the libutp source do in this case? RBDrained is called
+  when you take something out of the buffer.
+
+  our rb_drained signifies
+* DONE Poke hole in the firewall
+  Open port 3838
+* DONE Write a test client
+* DONE Setup LEDBAT plan
+** DONE Step zero: As always, go to the LEDBAT paper and read that first!
+** DONE Step one is to read through the utp.cpp source and document here what it entails.
+** DONE Implement the Delay History tracking
+** DONE Record the information and provide view functions
+   We have functions for recording the delay history and function
+   which are supposed to give us access to the current delay. The view
+   functions are depending on where we want to use this, so they have
+   been postponed.
+
+* DONE Make sure we propagate the timestamp/delay information in packets correctly
+   We should look at what the utp code is doing when it updates the
+   Timestamps and timestamp differences in the code base. And we
+   should make sure we are also updating these timestamps correctly in
+   all parts of our code base when we send out data. It is a
+   preliminary for actually using the timestamp information for
+   something.
+** DONE Introduce a reply_micro value
+   Specifically, where should it be? It is related to the PktWindow
+   I'd say. But the SocketInfo structure is another possible placement.
+** DONE When transmitting packets, stamp out this value
+   Means we should have access to the ReplyMicro whenever we want to
+   send data. This is a consideration for where to place the reply
+   micro value. On possibility is in the socket in fact. It makes some
+   sense to have it there as it is something we on sockets.
+** DONE Make sure we also set the timestamp correctly on outgoing packets
+** DONE When a packet comes in, update reply micro
+   This is done by subtracting the timestamp of the incoming packet
+   from our internal timestamp counter. Try to make this happen as far
+   ahead as possible in the protocol.
+* DONE Enable the LEDBAT code by updating it with samples.
+** DONE Find a spot where the LEDBAT code should be initialized
+** DONE Shove the LEDBAT info into the #pkt_window{}
+** DONE Update the LEDBAT code whenever we grab an incoming packet
+** DONE Set up a LEDBAT timer
+** DONE Handle the LEDBAT timer when it triggers
+* DONE What should be done when the LEDBAT timer trigger?
+  And also: Why is it triggering?
+
+  Code mistake.
+* DONE RTT Measurement
+  This is probably different in uTP from the standard TCP protocol
+
+  It is, because we have an explicit RTT-timer inside the packet. This
+  is fairly important to get right, but it requires us to investigate
+  a lot on the reference code to understand what is going on. It is
+  the major important part of this weeks work.
+
+  There are two fields, rtt and rtt_var which we must figure out how
+  works and report here when we do know.
+
+  DON'T FOCUS ON THIS BEFORE WE HAVE OTHER PARTS FIXED!
+
+  It is quite important to split up the work in parts and attack each
+  part in a separate manner. Otherwise you can't really understand the
+  complexity of the protocol at hand. So This work should be postponed
+  till later when we understand stuff about the other parts.
+** DONE There is something in BEP29 about these values.
+   The information is somewhat non-complete as always.
+
+   And the problem is that it may not be right!
+** DONE What does the code say in utp.cpp?
+   This will perhaps tell us something about the concept of RTT
+   measurements we need to carry out. There may be something important
+   to discern from the code base.
+
+   We know what the spec says, but we also know we can't trust the
+   spec at all. Hence, we should go to the code and read what the code
+   is doing here!
+
+   ; MAX_INCREASE is 3000 bytes
+   ; We keep track of the last_send_quota we added to the line,
+     When we last got a packet
+     When we last sent one
+     What the measured delay was
+     And when the window was maxed out
+
+   ; Updating the send_quota:
+     dt is the time that went past from the last send quota update
+     If we know the max_window currently allowed:
+       add := max_window * dt * 100 / delay_base (if no delay base, use 50)
+     If add > max_window * 100 andalso
+        add > MAX_INCREASE * 100
+     then
+       limit add to max_window
+
+     push this on top of the current send quota
+
+*** DONE How RTT Acks are handled given packets
+   ; Two variables are kept:
+     The RTT
+     The RTT Variance
+
+   ; When ACK'ing packets:
+     If the packet was never resent, we can simply use it for the
+       estimate.
+     Estimated rtt is: the time since we sent the packet till it was
+       acked.
+     If rtt = 0:
+       % Initializing
+       rtt := estimate
+       rtt_var := rtt / 2
+       true = rtt < 6000
+     else
+       % Update estimate
+       delta := rtt - estimate
+       variance = variance + (abs(delta) - rtt_var) / 4
+       rtt = rtt - rtt/8 + estimate/8
+       true = rtt < 6000
+       rtt_hist.add_sample(estimate)
+    
+     Now set the new RTO:
+       rto := max(rtt + rtt_var * 4, 500)
+
+** DONE Where should the RTT values be stored?
+   On the socket or in the window code? What is the most simple place
+   to do this work?
+
+   The two obvious places are:
+
+   The #socket{} structure.
+   The #window{} structure.
+
+   Ok, we expect the #window{} structure to be about congestion
+   control. So we would expect the #window{} structure to contain the
+   information about handling of the window. Hence, it should be in
+   the window.
+
+   On the other hand, the RTT measurement is a property of
+   the #socket{} not of the window. So it should probably be placed on
+   the socket instead.
+
+   WE PICK THE SOCKET. IT IS A PROPERTY OF THE SOCKET!
+** DONE When should the RTT values be updated
+   Whenever we receive an ACK for a sent packet which only got sent
+   once, we should use it for the RTT value updating.
+*** DONE Enable tracking of stuff w.r.t. sent packets
+    We should make a time stamp whenever a packet is leaving and gets
+    sent. This value should be stored in the packet wrapper.
+*** DONE Propagate the ACK'ed packets to the top-level
+    This change opens up the possibilities for doing stuff to these
+    packets. In particular, we want to track the RTT and add LEDBAT
+    samples as well, I think.
+*** DONE Enable pickup of sent packets upon ACKs
+    When we ACK a packet, we should pick them up together with the
+    ACK-time and then update the internal counters around RTT by
+    ACKing packets correctly.
+
+    We have a socket, and a list of Acked packets. Update the RTT
+    sampling with these packets.
+
+    Find all Acked packets that have been sent once.
+    For each packet, track its RTT by sending it through the socket.
+* DONE Should the LEDBAT tick bump more than one sampler?
+  Probably yes!
+  Yes, it should tick everything
+
+* DONE What are we *really* using the pkt_window structure for? What does it contain?
+  This is now interesting, as it looks like everything or almost
+  everything of the window has been placed in other structures.
+* DONE Rewrite the utp_window record as utp_network
+
+* DONE Create utp_network as a module
+  It turns out it is smart to create a module, utp_network into which
+  we shove the socket code and the window code. That way, it will be
+  possible to keep much of the socket stuff pretty static while
+  altering the window stuff efficiently.
+
+  To do this, we create a new module, and move stuff from utp_window
+  and utp_socket into this module, one thing at a time. Then we walk
+  through the rest of the code base to fix the calls such that we now
+  call with the new kind of module.
+** DONE Alter utp_window to utp_network
+** DONE Push the socket_info stuff into utp_network
+* DONE Why is the ledbat bumper being ticked almost immediately?
+  Wrong, it isn't. The reason we thought it was is simply due to the
+  fact that when we get in a ledbat_timeout, we set the timer
+  again. I've fixed the code to set the timer after processing the
+  clock bumps.
+
+* DONE Congestion control
+  To handle congestion control, we must enable LEDBAT congestion
+  control tracking on the socket as well.
+** DONE How LEDBAT congestion control is applied to the game!
+   The purpose of this code is to control the cwnd based on the
+   off-target value we have. The cwnd is the congestion window value
+   and it will act as a limiter for how many bytes we will send!
+
+   ; Applying LEDBAT congestion control:
+     sanity checks:
+       assert(min_rtt >= 0);
+       our_delay is the minimum of min_rtt and hist.get_value()
+       assert(our_delay >= 0 andalso our_delay != INT_MAX);
+
+     target = CCONTROL_TARGET (in uS)
+     if target is negative, force it to 100000;
+
+     off_target is target - our_delay.
+
+     assert(bytes_acked > 0);
+
+     Now, we set up a window factor:
+
+     double window_factor = (double)min(bytes_acked, max_window)
+                          / (double)max(max_window, bytes_acked);
+
+     The window factor is a clamping. We must protect against the case
+     where the window has just shrunk down. 
+
+     double delay_factor = off_target / target;
+
+     This factor tells us how much we are off the window
+
+     double scaled_gain = MAX_CWND_INCREASE_BYTES_PER_RTT
+                        * window_factor * delay_factor;
+
+     So the window factor will limit the amount of growth based on how
+     many bytes we have acked from the window. And the delay factor
+     will scale by the amount we are off. If we are above the target
+     in delay, this number will be negative.
+
+     assert(scaled_gain <= 1. + MAX_CWND_INCREASE_BYTES_PER_RTT *
+                           (int)min(bytes_acked, max_window) / (double)max(max_window, bytes_acked));
+
+     Protection against the maximal increase.
+                        
+     if (scaled_gain > 0 && g_current_ms - last_maxed_out_window > 300) {
+              // if it was more than 300 milliseconds since we tried to send a packet
+              // and stopped because we hit the max window, we're most likely rate
+              // limited (which prevents us from ever hitting the window size)
+              // if this is the case, we cannot let the max_window grow indefinitely
+              scaled_gain = 0;
+     }
+
+     Now update the MAX Window (This is the congestion window)
+
+     if (scaled_gain + max_window < MIN_WINDOW_SIZE) {
+              max_window = MIN_WINDOW_SIZE;
+     } else {
+              max_window = (size_t)(max_window + scaled_gain);
+     }
+
+     // make sure that the congestion window is below max
+     // make sure that we don't shrink our window too small
+     max_window = clamp<size_t>(max_window, MIN_WINDOW_SIZE,
+     opt_sndbuf);
+
+     min_rtt is the minimum rtt we have seen on the socket evar!
+
+     If our estimate > min_rtt then take estimate - min_rtt and shift
+     by it. WHY DO WE DO THIS??? IS THIS RIGHT??
+
+     initial rtt_var = 800 ms
+     initial rto     = 3000 ms
+     CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
+* DONE Is handle_packet_incoming always called in the connected state?
+  This looks wrong. I think that at least sometimes, we ought to have
+  a call from a state different from the connected state. We can fix
+  this by passing in the current state of the caller and see what
+  happen when we do exactly that.
+* DONE There are crashes in the LEDBAT code. Investigate why
+  The reason it crashes is because the RTT structure is currently
+  "none" when we try to update the ledbat values. Let us surmise...
+
+  Do we at any rate update the RTT values yet, or are they living
+  their life incorrectly?
+
+  Is 'none' possible in one direction if it has never sent any kind of
+  data? I think it is.
+
+  There is an obvious fix which is to ignore this case or set up a
+  sensible default value.
+* DONE Location of OptSndBuf?
+  Where is the correct location for OptSendBuf? Currently I am partial
+  to having it inside the SockInfo structure because the buffer is a
+  property of the socket.
+
+  Where is it currently located? Pkt buf!! This is definitely wrong
+
+  This has its home in the #sock_info{} structure for sure. It is the
+  only real place to have this. It is a static buffer limit we set on
+  the socket, so it ought to be a static property there.
+
+  The Send buffer has been moved to the #sock_info{} structure
+  now. This is where the #sock_info{} code belongs.
+* DONE MinRTT
+  How do we calculate the MinRTT? How do we track it? Where does it
+  belong? How do we extract it?
+
+  Belong: Definitely a property of the network. So we should track the
+  min rtt in the network stuff.
+
+  Done.
+* DONE How should the rto be updated and when?
+  There is a need to set the next rto value based on the current
+  timeout. The initial value is 3000, and the default rtt timeout is
+  500 in the code base. When we set the retransmit timeout, we ought
+  to update this value correctly.
+
+  This ought to be rather simple now we have a proper RTT calculation
+  live. When we are to set the RTO, we ought to simply set it based on
+  a call for the current RTO in the #network{} code. And that's it.
+* DONE Enable code that will consider the cwnd
+  We are currently totally ignoring the congestion window. We ought to
+  consider the congestion window size when sending out packets in the
+  right way.
+
+  Considering the congestion window is all about knowing the window
+  and limiting the send factor based upon how many bytes are free in
+  that window. In other words, we need to plan the appropriate call to
+  the code in and around congestion_control/2 in the utp_network
+  module.
+* DONE Code fails, figure out why
+  There are some errors that suddenly occur in our code base and we
+  don't know exactly why that happens. This should be investigated.
+
+  Special cases were missing.
+* DONE Make a plan of what to do in our case, so we have a point of entry
+   Make this plan into steps:
+
+   ; Ok, we have the Delay History tracker now.
+   ; But we need to write down a plan of how to attack this code
+     problem from here on out. The main thing we should focus on is
+     how the estimates are updated, and when they are.
+   ; We must track the delays from incoming packets in the
+     Delay History. The goal is not to *use* the values for anything,
+     but rather just to track the delay on the line. Essentially we
+     must focus on getting the rtt and delay hist tracked correctly in
+     all places.
+   ; We need a congestion window in the pkt_window so we can determine
+     how much we are allowed to send to the other end.
+     
+     Is this window in bytes or packets?
+   ; We need a function which can update the congestion window based
+     on the current delay.
+   ; The congestion window probably needs handling beyond this as it
+     is a "normal" TCP-style window. So we must continue by looking
+     into what this entails: Slow start, fast recovery from detection,
+     etc.
+
+* DONE Estimate shifting
+  When and why do we shift the estimate?
+
+  THIS HAPPENS IN EVERY INCOMING PACKET!
+
+  When do we shift the estimate? --
+    We consider their delay as well as ours.
+    We add a sample on their delay
+    If the sampled delay base is LESS than the previous delay base, we
+      might have a skewing clock in the game.
+    If difference is less than 10 ms, we may adjust.
+    Adjustment is on OUR-HIST, not theirs.
+  Why do we shift the estimate? --
+    We shift the estimate because we want to tackle clock skew. If the
+    delay they are seeing becomes less, it means that their clock has
+    skewed compared to ours. We should hence take the skew and add it
+    to our delay history to make up for the skew we are experiencing.
+
+  Another shift:
+
+  If our history value is GREATER than the min_rtt seen on the
+  line. We compensate. This is done because otherwise, the base delay
+  is probably not going to be correct. We have seen a better minimum
+  delay than what the history tracker has.
+
+  The compensation is to shift: VAL - MIN_RTT. Since VAL is greater,
+  this value is positive.
+
+  Does this make sense at all? What does the SHIFT value do?
+* DONE We should be tracking when the window was last maxed out
+  I don't know why, but we should be tracking this as well.
+
+  The reason we ought to track this is that whenever we max out the
+  window, we should stop scaling the gain for 300ms. This is to
+  protect the system against aggressive scaling in the case where we
+  max out the window. Tracking this is pretty simple really. We just
+  record when we max out the window in #network{} and then when we
+  want to scale, we check this value to see if:
+
+  b) it is older than 300ms, and we set it when we start.
+** DONE Track
+   When is the window maxed out? It is maxed out when we can't send
+   anymore data on the socket. This has to wait until we actually use
+   the max window.
+
+   Ok, we need to detect if we exhausted the window, so we can track
+   that the window was maxed out. It should be pretty easy to do, just
+   detect that there are 0 bytes more free space in the window and
+   then if that is the case, we should just track it.
+** DONE Use
+* DONE Handle the retransmit timeout by decaying the congestion window correctly
+  Correctly in this case is to reset the window to the packet size,
+  not gracefully decaying the window, as we are doing right now.
+
+  Rather, we should just reset the window to the initial packet size
+  and go from there. It looks as if this is what one will have to do
+  in this case.
+* DONE Congestion window code
+  Hinges on RTT Measurement. I think this will solve itself more or
+  less when we focus on getting LEDBAT to work correctly.
+
+  DON'T START THIS BEFORE RTT MEASUREMENT IS THERE.
+
+  There is no reason to attempt starting this before the RTT
+  measurement parts are written down.
+* DONE Make sure we are sampling the right kind of LEDBAT sample
+  What is the sample we should use for LEDBAT? Is it the TSDiff we get
+  from the other end, or is it the estimate we calculate in the round
+  trip time? In other words, what is the right value to use here? We
+  have several available, so make sure we select the right one.
+
+  Look at the code in libutp here. It is best to look into that code
+  and make informed decisions based upon what it is doing. It is in
+  any case much better than doing something else!
+
+  Ok, there are three delay histories that are tracked(!!):
+  rtt_hist:
+    This value tracks the ESTIMATED rtt from the other end. It is used
+    in updating the send_quota of a socket. And that is its only use.
+
+  our_hist:
+    This will track *our* delay history towards the other end. It is
+    used by us to track the delay history over time.
+
+    Our delay is used when considering the LEDBAT congestion control.
+
+  their_hist:
+    This will be used to track the delay in their direction. That is,
+    we use it to record the delay they are having towards our end. We
+    will only be using this for clock skew locally.
+** DONE Track rtt_hist
+** DONE Track our_hist
+   Build the code that enables us to track our_hist
+** DONE Track their hist
+   Their hist is needed to carry out some shifts later, but they are
+   not that important in the beginning.
+
+* DONE Handle timeout bumping:
+  ``Every time a socket sends or receives a packet, it updates its
+  timeout counter. If no packet has arrived within timeout number of
+  milliseconds from the last timeout counter reset, the socket
+  triggers a timeout. It will set its packet_size and max_window to
+  the smallest packet size (150 bytes). This allows it to send one
+  more packet, and this is how the socket gets started again if the
+  window size goes down to zero.''
+
+  This is a *bumping* and not a setting of the timeout
+  counter. Whenever something happens on the line, we bump the
+  timeout. If nothing has happened and timeout trigger, we can decide
+  what to do in that event. If there is outstanding data, we should
+  resend it. If there is *no* outstanding data, we need to decide what
+  to do.
+
+  Don't trust the *BEP 29* doc here,
+  *THE SPEC IS LYING ITS ASS OFF*
+** DONE Check that we bump the counter on incoming packet activity
+   This is whenever ack_packet gets called.
+** DONE Check that we bump the counter on outgoing packet activity
+   This is whenever we write a packet to the outgoing socket
+** DONE Make sure we only trigger the timeot on packets in flight
+   We currently use some code to keep track if we should set the
+   timeout or not. Perhaps we should just trigger and then handle it
+   by ignoring the timeout when set. This is a way easier path to take
+   rather than keeping track of if the timeout should be set or not.
+
+   On the other hand, the rules could be fairly simple. Only ACKs can
+   potentially close the inflight window and if we send off a packet
+   we *must* have opened the window.
+
+   Yeah, any sent packet *MUST* open the window. And the only way to
+   close the window is to do the obvious thing when all packets have
+   been ACK'ed. So this works.
+** DONE Consider the zero-window.
+   We have a separate zerowin timer in our code base. We could decide
+   not to have this, but rather have everything on the timeout
+   counter. Also, check if the 150 packet size point is correct or
+   wrong compared to the source code.
+
+   *THIS PIECE IS WRONG IN THE BEP DOC!*
+*** DONE libutp, zerowindow motherfucker, do you speak it?
+    libutp *DOES* have zero windows!
+    libutp *DOES* use 350 byte packets, not 150 bytes packet
+* DONE When we move to CS_GOT_FIN, set RTO
+  The rto should be set to min(rto*3, 60). This sounds a bit wrong
+  perhaps.
+* DONE We trip the RTT estimate assertion
+  The RTT estimate gets WAY WAY too high very quickly. This hints that
+  there is some bug in the RTT estimator which we are triggering. We
+  need to investigate why this is.
+
+  Send time is in us.
+  Ack time is in us.
+
+  So the RTT is returned in us. This clearly describes what the
+  problem is as our number is 1000 times too big. To fix it, we must
+  understand when and how the utp.cpp divides it down by a factor of
+  1000 somewhere.
+
+  A div by 1000 was missing.
+* DONE When implementing delayed ACKs, investigate timing
+  So the timing of the delayed ACK packet is such that it will leave
+  later than normally. This means we must think about timing of that
+  packet. It will leave later, so it should be stamped in at a later
+  time. Since the receiver sees the packet with a 100ms delay, he will
+  think the RTT is 100ms higher than it really is.
+
+  We need to look into what the code is doing here in the uTP de-facto
+  implementation. When the speed on the line is high, it is no
+  trouble. But it does become troubling when the speed is low.
+
+  The code does nothing! Ok, so we will currently do nothing!
+* DONE Implement Delayed ACKs
+  Fairly easily done. You simply count how many bytes we have ACKed
+  since last and set a timer. Whenever the timer triggers, or we go
+  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
+  will reset this if it happens.
+** DONE Basic delayed ACK implementation
+** DONE Delayed ACKs - Make sure we immediately ack the FIN packet. Don't delay him!
+   Easy right now, but keep this as it is important when you
+   introduce delayed ACKs.
+
+   In a delayed ACK world, we ought to do something about the FIN
+   packet and ACK it right away. Otherwise it will wait until the delay
+   trigger is tripped and that will take some time.
+** DONE List of states that should periodically send out ACKs
+   CONNECTED, FIN_SENT - Obvious as they are actually working like we
+   expect them to. These ought to work as expected and send out
+   delayed ACK messages.
+
+   DESTROY_DELAY, GOT_FIN - More interesting!
+* DONE Figure out why FINs are resent quickly
+  I think it is due to a wrong retransmit timer that triggers. It is
+  probably reset the wrong way or something like that.
+
+  No.
+
+  Path of error:
+
+  So if the packet is resent after 500 ms.
+  ... We did not ACK the packet
+  ... It means that we did not get the ACK
+  ... Which means that the ACK did not get sent
+  ... Which means that the FIN packet was never received
+  ... Which means that the FIN packet was never sent
+
+  Somewhere in this assumption, something is wrong.
+
+  0. Get the event tracing up and going
+  1. Find a test that has the error!
+  2. Install a probe on that particular test.
+  3. Test if the packet was received.
+
+  Here is the error: When a fin is sent, the sequence counter on the
+  receiving side did not get bumped if the FIN was an empty packet.
+* DONE Fix the problem with delayed ACK messages on piggyback
+  The problem is that the delayed ACK timer trigger on the byte
+  count. We simply have too many bytes received and that promptly
+  trigger the sending of an ACK.
+
+  Actually, after looking at it, we are doing this correctly!
+  
+* DONE Fix this problem with bad matches:
+  There is a problem with a mistake in the code base I don't know why happens.
+
+  =SUPERVISOR REPORT==== 21-Jul-2011::18:40:53 ===
+     Supervisor: {local,gen_utp_worker_pool}
+     Context:    child_terminated
+     Reason:     {{badmatch,
+                      {ok,[],
+                          {network,
+                              {sock_info,
+                                  {127,0,0,1},
+                                  [],3333,#Port<13287.1203>,9926,178850},
+                              8192,undefined,3000,350,4294966282,30000000,
+                              none,none,
+                              {ledbat,
+                                  {[0,0,0,0,0,0,0,0,0,0,0],[0]},
+                                  0,0,
+                                  {[0],[0]}},
+                              {ledbat,
+                                  {[4294966282,4294966282,4294966282,
+                                    4294966282,4294966282,4294966282,
+                                    4294966282,4294966282,4294966282,
+                                    4294966282,4294966282],
+                                   [4294966282]},
+                                  4294966282,4294966282,
+                                  {[0],[0]}},
+                              undefined,1311266452929,1311266453229},
+                          {buffer,
+                              {[],[]},
+                              [],
+                              [{pkt_wrap,
+                                   {packet,st_data,undefined,0,3,65535,[],
+                                       <<"WORLD">>},
+                                   1,1311266453240270,false},
+                               {pkt_wrap,
+                                   {packet,st_data,undefined,0,2,65535,[],
+                                       <<"HELLO">>},
+                                   1,1311266453239179,false}],
+                              0,0,4,none,8192,1000},
+                          {proc_info,{[],[]},{[],[]}},
+                          undefined,undefined}},
+                  [{gen_utp_worker,connected,2},
+                   {gen_fsm,handle_msg,7},
+                   {proc_lib,init_p_do_apply,3}]}
+     Offender:   [{pid,<13287.74.0>},
+                  {name,child},
+                  {mfargs,{gen_utp_worker,start_link,undefined}},
+                  {restart_type,temporary},
+                  {shutdown,15000},
+                  {child_type,worker}]
+* DONE Why do we get packets which are "Far into the Future" on an otherwise perfect line?
+  This is odd. Maybe there is something with the wraparound which
+  fails? In any case, I believe that could be the cause of the
+  problem. Check it!
+
+  Error occurs in backwards communication at least.
+
+  The problem is that we may have:
+
+  Send FIN, sequence #X
+  Send State, sequence #X
+                Get FIN, bump packet expected to #X+1
+                Get State, now this one is too old.
+
+  We should probably just use the state packet and ignore it sequence
+  counter. That is, we should decide what fields, if any, we would
+  like to use from such a state packet. Throwing it out seems a little
+  premature.
+
+  The problem is due to a wraparound bug in the validate_seq_no code
+  in the Buffer manager. The bug is such that we unfortunately wrap
+  around and get a packet from the future since we forget a bit16
+  calculation.
+* DONE Fix the listen/accept register bug
+  We never monitor processes in the accept-queue. This is a mistake
+  and must be cleaned up!
+* DONE Fix the problem with reflecting RESET back
+  So, if we were the socket initiator or the acceptor is a different
+  thing. It governs what kind of message we should push back to the
+  other end. Simply because otherwise, we don't get the right kind of
+  reset message :/
+
+  Currently, we *throw* RESET the other way, but the RESET we send is
+  obviously the wrong one, and close-down doesn't happen.
+
+  Again, what does the de-facto code do?
+
+  The De-facto code checks both conn_id_send || conn_id_recv.
+
+  This means we should try to figure out the same kind of
+  information :/ It is not clear what to do in this case so it
+  requires thinking, probably away from the keyboard.
+
+  The way to do it is to store two entries in the table.
+
+  The connector has:
+    ConnID RECV: N
+    ConnID SEND: N+1
+
+  The packet sent contains N
+
+  The receiver has:
+    ConnID SEND: N - (whatever is in the packet)
+    ConnID RECV: N+1 (one more than what is in the packet, ensures a flip)
+
+  So we should store N and N+1 in any case.
+* DONE Fix an ST_RESET from the "got_fin" state.
+  If we are in the "got_fin" state and get back an ST_RESET, handle it correctly.
+* DONE If we run two different kinds of tests, why doesn't it complete correctly?
+  I ran a test_backwards in Listen and test_large in Connect. It fails
+  in an odd way since there is not sent back a reset packet and we
+  definitely should in this case. Investigate!
+
+  Two errors on this one:
+  a) Wrong pairing meant we did not correctly enter the connection in
+  the monitored set.
+  b) The RESETs we send back are wrong in the ConnID number so they
+  never arrive at the right spot in the other end.
+* DONE close_2 fails on a bad line
+  To solve this, we must:
+
+** DONE Write a way to continue a test until it fails.
+** DONE Use it on close_2.
+** DONE See what is wrong in close_2.
+   It turns out it was a very simple thing. We did not account for
+   dead processes and that can happen. A recent fix to the code makes
+   it possible for the backend system to gracefully tell this to a
+   client through an error message.
+
+* DONE When we disconnect due to an error, we better clean up
+  There is something murky where we don't get a process moved to its
+  destroy state. Thus, the process hangs around and is still there,
+  even though I would have presumed it should have gone to death.
+
+  To find this, run a repeated test of test_piggyback and then look up
+  and query one of the processes that have troubles and figure out
+  what its internal state is and what it is currently doing.
+
+  We could attach a debugger to it, or send it a message for
+  formatting its internal state.
+
+  There is a call, sys:get_status/1,2 for this!
+
+  State is destroy, so there is something that does not get cleaned up
+  like it should be! That is the problem all the time.
+
+  Fixed, there was a missing timeout in a single destroy statement.
+* DONE Make code which allows us to graph various counters on a running system
+  We need to be able to graph the output over time. I think we should
+  look into and use the "folsom" application for this as it would an
+  excellent tool for graphing the running system and investigating
+  it. Essentially, we need something we can look at and then go "Oh,
+  this is just WRONG!". We prefer a simple CSV-like output so it can
+  be plotted in R.
+** DONE Create a new process utp_trace and link him into supervision
+** DONE utp_trace recognizes different tracked counters
+** DONE utp_trace reads configuration options
+ If tracing is enabled, it will write a trace file. The trace file
+ is written in a neat format which is easy to read by R. There should
+ be an X-coordinate and then an output on an Y-coordinate of the type
+ we need to plot here.
+** DONE What kind of format does R recognize?
+ We need to figure out what kind of format we can get R to read and
+ understand the easiest. I think we need a way to plot comma-separated
+ values to R. We are perhaps best off placing each value in its own
+ file of pairs: Time stamp and value count. That way we can read in
+ numerous such data to R and then plot them one at a time.
+
+ There are two things to consider:
+ * How do we name the file?
+   We should probably hack the pid or something such into the file
+   name:
+
+   pid(unix).pid(process).countertype.csv
+
+ * How do we convert the time stamp to something R can work with?
+   This is a good question which needs to be researched.
+
+   We looked at this. R can work with some UnixTS.fractional stuff
+   easily
+** DONE Build a file mapper
+   Appending to a file is a question of also checking if the file is
+   there at all. If it is not there, we should create the file and
+   open it. The basic call is "append" which append something on an
+   opened file in the file mapper.
+** DONE Enable tracing for RTT
+** DONE Test tracing for RTT
+* DONE Enable full nastiness on the lo interface
+  Re-enable nastiness on the lo interface and run some tests on the
+  protocol. This will allow us to check for correctness again.
+* DONE Investigate the timeout problem
+  It looks like there is a timeout bug still present in the code. When
+  this bug triggers the system times out. We know that the piggyback
+  test can trigger the error, so running repeated tests on that one
+  could be what we should do.
+
+** DONE One timeout problem has been found and eliminated.
+   We have found a timeout problem w.r.t. the tag sent_data which was
+   not checked if the window was re-filled up. This affected the
+   correctness of the code since a dropped packet could deadlock us
+   down.
+
+* DONE Write a test server on a local branch
+  A test server is a way to carry out a real-world test. We build a
+  server which can be loaded by real people and then we see what
+  happens.
+* DONE Use "Horus" to carry out a client test over the Internet.
+  We need to do some real-world testing and to do that we need some
+  real-world stuff to happen. Use Horus for that.
+
+  You need:
+  ; A recent OTP (R14B03 for instance)
+  ; Rebar
+  ; git
+
+  ; git clone git://github.com/jlouis/etorrent.git
+  ; cd etorrent
+  ; git checkout --track -b utp origin/utp
+  ; make deps
+  ; make rel
+  ; make dev
+  ; rel/etorrent/erts-5.8.4/bin/erl -- Get the beast up and running
+
+  Now inside this world where we have the utp application, we can
+  begin doing tests:
+
+  utp:start(7878). % Port number to start on
+  utp_client_test:start().
+  utp_client_test:ls().
+  utp_client_test:get(naked_leashed_japanese_radioactive_cat, "NLJRC.jpg").
+
+* TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
+  This is pretty obvious. If we enter the got-fin state, we are not
+  able to ever serve a process waiting for the data it requested. We
+  should probably abort the receiver with a message that we can't
+  satisfy it.
+* TODO If we get wrong packets, don't decode them, but error out
+  This should be fairly simple to actually do.
+* Create an R-plotter for the tracing file format.
+ The R-plotter should be able to read in the raw data and then show
+ them as plots over time. This enables us to log different aspects of
+ the timing structures in the code. Logging these is very important if
+ the goal is to fix and correct issues around the counter structures.
+
+ Tom Moertel suggested ggplot2. ggplot2 is definitely part of the
+ solution.
+
+ So to do this, we need to track some data in the real world. To track
+ data in the real world, we need to have a set up where we can track
+ what happens when the system is running. We should then ask the
+ tracer to output the trace data for various connections.
+
+ When we have the data, we should write an R-script which can take the
+ raw data and plot it through ggplot2. At that point in time, it
+ should be mostly done.
+* Implement KEEP ALIVE
+* TODO Enable parallel tests
+  The parallel tests should be to run the *same* test many times next
+  to each other. Otherwise, we may end up with something wrong since
+  the belief is that when you accept a connection, you know what is
+  going to happen in the other end. This is only doable if we run the
+  same test in parallel.
+** DONE A quick field test shows parallelism ought to work.
+* TODO Try to eliminate lifted types
+  The uTP code has a lot of "lifts" of the form none | elem() for some
+  element elem. Try to get rid of them by instating good defaults and
+  use the defaults where needed. This simplifies the code paths quite
+  a lot.
+* SACK support
+  SACK support has two directions
+** SACK in the send direction
+*** When should we send out an SACK?
+    My guess is this hinges on the size of the reorder buffer. If it
+    is too big, we can SACK it.
+*** How do we generate an SACK
+    The important part is padding up to the last bytes. How is padding
+    handled. How do we actually do this?
+** SACK in the receive direction
+   When we receive an SACK, we should go through our send-buffer and
+   weed out stuff the other end already have. Then we should decide
+   what to retransmit and how. We probably shouldn't just "retransmit
+   the oldest packet" as we do now though.
+* TODO Handle the duplicate ack case by counting and then enabling congestion window updates
+  So --,
+
+  How do we detect this is the case in the first place?
+    This is based on the idea of selective acks. If segments are lost
+    in the selective ACK phase, then we decay the window.
+    
+
+  How do we decay the window?
+    With the already implemented window decaying routine.
+
+* Loss Congestion control
+  Use packet loss as the congestion control mechanism.
+
+  This is partially done. Retransmission loss is currently done as per
+  the protocol spec.
+
+  We still need to handle duplicate ACK loss, but it better wait till
+  we have Selective ACK (SACK) support.
+* Nagle code
+  Nagling is fairly easy to do. When there is less than a packet to
+  send out, we simply say: "No, won't send" and set a nagle timer. If
+  the timer is tripped, we force sending of everything. Otherwise we
+  wait for more data until we have a full packet to send. It means we
+  need to be able to taste/peek on the send buffer to see if there is
+  enough data on it to be able to send out a full packet.
+
+  NAGLING MUST BE IMPLEMENTED AFTER THE CONGESTION WINDOW CODE
+* Look at the coverage output:
+  What things are we not testing currently?
+* Let the SYN-packet use the normal retransmission queue
+  First mistake on our part: SYN packets should go to the outgoing
+  queue and be handled as resends. We currently fake-retransmit it,
+  but it looks easier to simpler use the same queueing facility of the
+  other end.
+* DONE There seems to be yet another SYN bug
+  It looks as if we are facing yet another bug due to SYNs being
+  duplicate. We should probably track what we do with SYN
+  packets. There are not that many of them and knowing what does wrong
+  would be really good.
+
+* TODO Add a safety timer on RESET Packets
+  We currently just RESET on anything, but we should probably include
+  some kind of protection and blackhole the other end for a while if
+  we reset packets toward him above a certain level. This is fairly
+  easily implemented later on though.
+* TODO There are some states that can't cope with a RESET yet
+  But it doesn't matter at the moment. I'd rather look into other
+  errors first and get those away first. Then we can look into this
+  which should be fairly automated to add later on.
+* TODO Only install the zerowin timer if there are more data to send out
+  We are currently always setting the ZeroWindow timer when the
+  peer_advertised_window is 0, but we could postpone that decision
+  until we know we need to send data to the other end.
+
+  Actually it may clear itself up, or so we hope.
+
+  This is most clever to postpone as it has no direct effect on the
+  code base currently. It is a "Nice-to-have" thing rather than a
+  "DO-NEED!" thing.
+* TODO Handle ENOBUFS in packet initialization:
+   {{badmatch,{error,enobufs}},
+    [{utp_pkt,send_packet,4},
+     {lists,foldl,3},
+     {utp_pkt,fill_window,4},
+     {gen_utp_worker,fill_window,5},
+     {gen_utp_worker,connected,3},
+     {gen_fsm,handle_msg,7},
+     {proc_lib,init_p_do_apply,3}]}
+
+   The error is currently benign though as Erlang makes us survive.
+
+   If we *know* a buffer is full, we ought to handle it right away by
+   doing the right thing(tm).
+* DONE The ConnId lookup table should guard against generating an already existing random number.
+  This is fairly simple. When generating a new ConnID, look up if we
+  already have one.
+* Grace period on used ConnIDs?
+  When we have used a ConnID for a while, should we accept another one
+  straight after? It sounds like a bad idea because it may time out
+  for some reason. 
+
+  On the other hand the conn_id/ip pair makes sure we are not
+  expecting data from this guy in any other way. Someone with another
+  ID would not be able to send to the socket unless he had the same IP
+  address then. It makes the collisions much less likely to occur in
+  the implementation to use this. In fact, it is 1/2**32. Rather good,
+  and not at all realistic for a match.
+
+  This is probably not needed if we triple the ConnID over the IP/Port
+  pairs.
+* Consider proper for testing.
+* What happens if an acceptor dies?
+  There are really two things here:
+
+  ; Handle timeouts for accept() calls. What should happen upon a
+    timeout? (Monitors in the proxy on the acceptors?) It is probably
+    the easiest way.
+  ; In direct consequence: An acceptor() dies. How can we clean up? Monitors!
+
+* Monitors from workers to their initiators.
+
+  What happens when we have a socket which is established but
+    essentially dead since nobody knows about it?
+
+  Well a worker is like a port, so it must try to set a monitor on the
+  thing that creates the socket. It doesn't currently. This means if
+  its owner dies, so will the socket.
+
+
+* TODO in the GOT_FIN state, we should still process the ACK numbers
+  It is only the parts about reading in data we should skip.
+  We can update the internal buffers, but since we are in GOT_FIN, we
+  can't fill up the queue.
+* TODO Push out an ACK upon {got_fin, st_fin}
+  This ACK will tell the other end that we have succeeded in closing
+  down. He will then upon receipt also move to the got_fin state and
+  we are both at the point where we close down.
+
+  I actually think this is currently being done!
+* TODO timetrap timeouts should result in logging
+* TODO Looks like resets are sent to the wrong place
+  If we get in a wrong packet, to where should the RESET be sent in
+  order to hit right in the other end?
+** TODO What is utp.cpp doing here?
+** TODO Do the same thing as utp.cpp :)
+* TODO Consider timeouts in all states.
+  We need to make sure there is a timeout exit for all connection
+  states. This is not currently guaranteed.
+
+  Only do this if we suspect there is an error due to a missed
+  timeout. Currently there does not seem to be one.
+* Add controlling_process/2 support
+  A socket should monitor its initiator and have the equivalent of a
+  "controlling_process/2" associated with it. That way, a kill of a
+  process will mean that the socket itself closes down gracefully if
+  the controlling process of the socket dies.
+
+  This corresponds to how gen_tcp is working.
+* Packet size control
+  How does this code handle packet sizes? Whenever it needs a packet
+  size, it calls get_packet_size() which essentially either returns a
+  standard packet or if DYNAMIC_PACKET_SIZE_ENABLED is set a dynamic
+  packet size.
+
+  It looks there is no dynamic packet size control by default. Hence
+  we postpone this problem till later when we know something more
+  about it.
+* DONE Storing CID+1 should in principle be checked against overflow
+  In the ETS table registry, we should in principle be checking around
+  overflow.
+* TODO Decide what to do in "GOT_FIN" when a retransmit timer triggers
+  It is not clear what one should do in this case. Decide what is the
+  correct order of things to do.
+
+  This also requires thinking away from the keyboard to solve.
+
+  Ok, here is some analysis:
+
+  When the retransmit timer trigger and we got the FIN message, the
+  messages sent are really lost. It doesn't matter. What we can do
+  currently is just to let it trigger and then the RESET packet in the
+  other direction will fix up things. In the longer run, a
+  retransmission should probably be ignored as the socket is in a
+  pseudo-dead state. It is not that an important things to get right
+  though.
+
+
+
