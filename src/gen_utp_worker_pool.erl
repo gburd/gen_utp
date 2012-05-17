@@ -43,14 +43,3 @@ init([]) ->
                  {gen_utp_worker, start_link, []},
                  temporary, 15000, worker, [gen_utp_worker]},
     {ok, {{simple_one_for_one, 50, 3600}, [ChildSpec]}}.
-
-
-
-
-
-
-
-
-
-
-
