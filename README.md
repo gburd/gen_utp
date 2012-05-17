@@ -1,4 +1,4 @@
-erlang-utp
+gen_utp
 ==========
 
 uTP implementation in Erlang
