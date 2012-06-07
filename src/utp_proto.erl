@@ -233,7 +233,7 @@ prop_decode_inv() ->
     ?FORALL({P, T1}, {g_packet(), g_timestamp()},
 	    begin
                 Encoded = encode(P, T1),
-                {Packet, _, _, _} = decode(Encoded),
+                {ok, {Packet, _, _, _}} = decode(Encoded),
                 P =:= Packet
 
                 %%{P1, _, T11, _} = decode(encode(P, T1)),
