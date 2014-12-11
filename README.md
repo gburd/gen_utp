@@ -1,4 +1,4 @@
 gen_utp
 =======
 
-uTP implementation in Erlang
+A μTP (Micro Transport Protocol) implementation in Erlang.
